@@ -4,6 +4,7 @@ import { LIMA_DEMO_DATA, type LimaDemoData, type LimaInstance } from './demoData
 import { FETCH_DEFAULT_TIMEOUT_MS } from '../../../lib/constants/network'
 
 export interface LimaStatus {
+  detected: boolean
   instances: LimaInstance[]
   totalNodes: number
   runningNodes: number
@@ -16,6 +17,7 @@ export interface LimaStatus {
 }
 
 const INITIAL_DATA: LimaStatus = {
+  detected: false,
   instances: [],
   totalNodes: 0,
   runningNodes: 0,
@@ -30,32 +32,26 @@ const INITIAL_DATA: LimaStatus = {
 const CACHE_KEY = 'lima-status'
 
 /**
- * NodeInfo shape returned by the console backend at GET /api/mcp/nodes.
- * Only the fields we need for Lima detection are typed here.
- * Backend returns flat cpuCapacity/memoryCapacity fields, not nested capacity object.
+ * Backend response for GET /api/mcp/lima/status.
  */
-interface BackendNodeInfo {
-  name?: string
-  osImage?: string
-  labels?: Record<string, string>
-  conditions?: Array<{ type?: string; status?: string }>
-  cpuCapacity?: string
-  memoryCapacity?: string
+interface BackendLimaStatus {
+  detected?: boolean
+  instances?: LimaInstance[]
+  totalNodes?: number
+  runningNodes?: number
+  stoppedNodes?: number
+  brokenNodes?: number
+  health?: LimaStatus['health']
+  totalCpuCores?: number
+  totalMemoryGB?: number
+  lastCheckTime?: string
 }
 
 /**
- * Fetch Lima VM status via the console backend proxy.
- *
- * Lima nodes are identified by:
- * - A `lima.sh/instance` label on the node
- * - Node name starting with "lima-"
- * - The osImage or annotation containing "lima"
- *
- * Uses GET /api/mcp/nodes which proxies through the backend to all connected
- * clusters. The backend returns { nodes: NodeInfo[], source: string }.
+ * Fetch Lima VM status from backend aggregation endpoint.
  */
 async function fetchLimaStatus(): Promise<LimaStatus> {
-  const resp = await fetch('/api/mcp/nodes', {
+  const resp = await fetch('/api/mcp/lima/status', {
     headers: { Accept: 'application/json' },
     signal: AbortSignal.timeout(FETCH_DEFAULT_TIMEOUT_MS),
   })
@@ -64,112 +60,30 @@ async function fetchLimaStatus(): Promise<LimaStatus> {
     throw new Error(`HTTP ${resp.status}`)
   }
 
-  const body: { nodes?: BackendNodeInfo[] } = await resp.json()
-  const allNodes = Array.isArray(body?.nodes) ? body.nodes : []
-
-  // Detect Lima nodes by name prefix, label, or OS image
-  // Note: Backend only exposes labels, not annotations
-  const limaNodes = allNodes.filter(
-    (n) =>
-      n.name?.startsWith('lima-') ||
-      n.labels?.['lima.sh/instance'] !== undefined ||
-      n.osImage?.toLowerCase().includes('lima'),
-  )
-
-  if (limaNodes.length === 0) {
-    return {
-      ...INITIAL_DATA,
-      health: 'not-detected',
-      lastCheckTime: new Date().toISOString(),
-    }
-  }
-
-  /**
-   * Parse CPU quantity strings like "4", "4000m" to integer Core count.
-   */
-  function parseCpuCores(cpu?: string): number {
-    if (!cpu) return 0
-    if (cpu.endsWith('m')) return Math.ceil(parseInt(cpu) / 1000)
-    return parseInt(cpu) || 0
-  }
-
-  /**
-   * Parse memory quantity strings like "8Gi", "4096Mi" to integer GB.
-   */
-  function parseMemoryGB(mem?: string): number {
-    if (!mem) return 0
-    const gib = mem.match(/^(\d+)Gi$/)
-    if (gib) return parseInt(gib[1])
-    const mib = mem.match(/^(\d+)Mi$/)
-    if (mib) return Math.round(parseInt(mib[1]) / 1024)
-    const ki = mem.match(/^(\d+)Ki$/)
-    if (ki) return Math.round(parseInt(ki[1]) / (1024 * 1024))
-    return 0
-  }
-
-  const instances: LimaInstance[] = limaNodes.map((n) => {
-    const isReady =
-      n.conditions?.some((c) => c.type === 'Ready' && c.status === 'True') ??
-      false
-    const hasPressure =
-      n.conditions?.some(
-        (c) =>
-          (c.type === 'DiskPressure' ||
-            c.type === 'MemoryPressure' ||
-            c.type === 'PIDPressure') &&
-          c.status === 'True',
-      ) ?? false
-
-    const nodeStatus: 'running' | 'stopped' | 'broken' = hasPressure
-      ? 'broken'
-      : isReady
-        ? 'running'
-        : 'stopped'
-
-    // Try to extract Lima version from label (best effort)
-    const limaVersion = n.labels?.['lima.sh/version'] ?? 'unknown'
-
-    return {
-      name: n.name ?? 'unknown',
-      status: nodeStatus,
-      cpuCores: parseCpuCores(n.cpuCapacity),
-      memoryGB: parseMemoryGB(n.memoryCapacity),
-      diskGB: 0, // disk info not in standard node capacity
-      arch:
-        n.labels?.['kubernetes.io/arch'] ??
-        n.labels?.['beta.kubernetes.io/arch'] ??
-        'unknown',
-      os: n.osImage ?? 'Linux',
-      limaVersion,
-      lastSeen: new Date().toISOString(),
-    }
-  })
-
-  const runningNodes = instances.filter((i) => i.status === 'running').length
-  const stoppedNodes = instances.filter((i) => i.status === 'stopped').length
-  const brokenNodes = instances.filter((i) => i.status === 'broken').length
-
-  const totalCpuCores = instances.reduce((s, i) => s + i.cpuCores, 0)
-  const totalMemoryGB = instances.reduce((s, i) => s + i.memoryGB, 0)
-
-  const health: 'healthy' | 'degraded' =
-    brokenNodes > 0 || stoppedNodes > 0 ? 'degraded' : 'healthy'
+  const body: BackendLimaStatus = await resp.json()
+  const instances = Array.isArray(body.instances) ? body.instances : []
+  const detected = body.detected ?? instances.length > 0
+  const health = detected
+    ? (body.health ?? (body.brokenNodes || body.stoppedNodes ? 'degraded' : 'healthy'))
+    : 'not-detected'
 
   return {
+    detected,
     instances,
-    totalNodes: limaNodes.length,
-    runningNodes,
-    stoppedNodes,
-    brokenNodes,
+    totalNodes: body.totalNodes ?? instances.length,
+    runningNodes: body.runningNodes ?? instances.filter((instance) => instance.status === 'running').length,
+    stoppedNodes: body.stoppedNodes ?? instances.filter((instance) => instance.status === 'stopped').length,
+    brokenNodes: body.brokenNodes ?? instances.filter((instance) => instance.status === 'broken').length,
     health,
-    totalCpuCores,
-    totalMemoryGB,
-    lastCheckTime: new Date().toISOString(),
+    totalCpuCores: body.totalCpuCores ?? instances.reduce((sum, instance) => sum + (instance.cpuCores || 0), 0),
+    totalMemoryGB: body.totalMemoryGB ?? instances.reduce((sum, instance) => sum + (instance.memoryGB || 0), 0),
+    lastCheckTime: body.lastCheckTime ?? new Date().toISOString(),
   }
 }
 
 function toDemoStatus(demo: LimaDemoData): LimaStatus {
   return {
+    detected: demo.totalNodes > 0,
     instances: demo.instances,
     totalNodes: demo.totalNodes,
     runningNodes: demo.runningNodes,
@@ -185,6 +99,7 @@ function toDemoStatus(demo: LimaDemoData): LimaStatus {
 export interface UseLimaStatusResult {
   data: LimaStatus
   loading: boolean
+  isRefreshing: boolean
   error: boolean
   consecutiveFailures: number
   showSkeleton: boolean
@@ -192,7 +107,7 @@ export interface UseLimaStatusResult {
 }
 
 export function useLimaStatus(): UseLimaStatusResult {
-  const { data, isLoading, isFailed, consecutiveFailures, isDemoFallback } =
+  const { data, isLoading, isRefreshing, isFailed, consecutiveFailures, isDemoFallback } =
     useCache<LimaStatus>({
       key: CACHE_KEY,
       category: 'default',
@@ -202,21 +117,22 @@ export function useLimaStatus(): UseLimaStatusResult {
       fetcher: fetchLimaStatus,
     })
 
-  // hasAnyData is true only when Lima nodes exist.
-  // 'not-detected' is NOT counted as "has data" so the empty state shows properly.
-  const hasAnyData = data.totalNodes > 0
+  const effectiveIsDemoData = isDemoFallback && !isLoading
+  const hasAnyData = !data.detected ? true : data.totalNodes > 0
 
   const { showSkeleton, showEmptyState } = useCardLoadingState({
     isLoading,
+    isRefreshing,
     hasAnyData,
     isFailed,
     consecutiveFailures,
-    isDemoData: isDemoFallback,
+    isDemoData: effectiveIsDemoData,
   })
 
   return {
     data,
     loading: isLoading,
+    isRefreshing,
     error: isFailed && !hasAnyData,
     consecutiveFailures,
     showSkeleton,

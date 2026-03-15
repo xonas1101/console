@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -239,7 +241,7 @@ func (h *MCPHandlers) GetPods(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -313,7 +315,7 @@ func (h *MCPHandlers) FindPodIssues(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -373,7 +375,7 @@ func (h *MCPHandlers) GetGPUNodes(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -431,7 +433,7 @@ func (h *MCPHandlers) GetGPUNodeHealth(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -497,7 +499,7 @@ func (h *MCPHandlers) GetGPUHealthCronJobStatus(c *fiber.Ctx) error {
 	status, err := h.k8sClient.GetGPUHealthCronJobStatus(ctx, cluster)
 	if err != nil {
 		log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+		return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 	}
 	return c.JSON(fiber.Map{"status": status})
 }
@@ -530,7 +532,7 @@ func (h *MCPHandlers) InstallGPUHealthCronJob(c *fiber.Ctx) error {
 
 	if err := h.k8sClient.InstallGPUHealthCronJob(ctx, body.Cluster, body.Namespace, body.Schedule, body.Tier); err != nil {
 		log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+		return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 	}
 
 	return c.JSON(fiber.Map{"success": true, "message": fmt.Sprintf("GPU health CronJob installed on %s (tier %d)", body.Cluster, body.Tier)})
@@ -562,7 +564,7 @@ func (h *MCPHandlers) UninstallGPUHealthCronJob(c *fiber.Ctx) error {
 
 	if err := h.k8sClient.UninstallGPUHealthCronJob(ctx, body.Cluster, body.Namespace); err != nil {
 		log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+		return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 	}
 
 	return c.JSON(fiber.Map{"success": true, "message": fmt.Sprintf("GPU health CronJob removed from %s", body.Cluster)})
@@ -590,7 +592,7 @@ func (h *MCPHandlers) GetGPUHealthCronJobResults(c *fiber.Ctx) error {
 	status, err := h.k8sClient.GetGPUHealthCronJobStatus(ctx, cluster)
 	if err != nil {
 		log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+		return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 	}
 	return c.JSON(fiber.Map{"results": status.LastResults, "cluster": cluster})
 }
@@ -610,7 +612,7 @@ func (h *MCPHandlers) GetNVIDIAOperatorStatus(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -667,7 +669,7 @@ func (h *MCPHandlers) GetNodes(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -712,6 +714,249 @@ func (h *MCPHandlers) GetNodes(c *fiber.Ctx) error {
 	return c.Status(503).JSON(fiber.Map{"error": "No cluster access available"})
 }
 
+type limaInstanceStatus struct {
+	Name        string `json:"name"`
+	Cluster     string `json:"cluster"`
+	Status      string `json:"status"`
+	CpuCores    int    `json:"cpuCores"`
+	MemoryGB    int    `json:"memoryGB"`
+	DiskGB      int    `json:"diskGB"`
+	Arch        string `json:"arch"`
+	OS          string `json:"os"`
+	LimaVersion string `json:"limaVersion"`
+	LastSeen    string `json:"lastSeen"`
+}
+
+type limaStatusResponse struct {
+	Detected      bool                 `json:"detected"`
+	Instances     []limaInstanceStatus `json:"instances"`
+	TotalNodes    int                  `json:"totalNodes"`
+	RunningNodes  int                  `json:"runningNodes"`
+	StoppedNodes  int                  `json:"stoppedNodes"`
+	BrokenNodes   int                  `json:"brokenNodes"`
+	Health        string               `json:"health"`
+	TotalCpuCores int                  `json:"totalCpuCores"`
+	TotalMemoryGB int                  `json:"totalMemoryGB"`
+	LastCheckTime string               `json:"lastCheckTime"`
+	Source        string               `json:"source"`
+}
+
+func isLimaNode(node k8s.NodeInfo) bool {
+	name := strings.ToLower(node.Name)
+	osImage := strings.ToLower(node.OSImage)
+
+	if strings.HasPrefix(name, "lima-") {
+		return true
+	}
+
+	if node.Labels != nil {
+		if _, ok := node.Labels["lima.sh/instance"]; ok {
+			return true
+		}
+	}
+
+	return strings.Contains(osImage, "lima")
+}
+
+func parseLimaCPUCores(cpu string) int {
+	if cpu == "" {
+		return 0
+	}
+
+	if strings.HasSuffix(cpu, "m") {
+		milli, err := strconv.Atoi(strings.TrimSuffix(cpu, "m"))
+		if err != nil {
+			return 0
+		}
+		return (milli + 999) / 1000
+	}
+
+	cores, err := strconv.Atoi(cpu)
+	if err != nil {
+		return 0
+	}
+	return cores
+}
+
+func parseLimaMemoryGB(memory string) int {
+	if memory == "" {
+		return 0
+	}
+
+	if strings.HasSuffix(memory, "Gi") {
+		value, err := strconv.Atoi(strings.TrimSuffix(memory, "Gi"))
+		if err != nil {
+			return 0
+		}
+		return value
+	}
+
+	if strings.HasSuffix(memory, "Mi") {
+		value, err := strconv.Atoi(strings.TrimSuffix(memory, "Mi"))
+		if err != nil {
+			return 0
+		}
+		return (value + 1023) / 1024
+	}
+
+	if strings.HasSuffix(memory, "Ki") {
+		value, err := strconv.Atoi(strings.TrimSuffix(memory, "Ki"))
+		if err != nil {
+			return 0
+		}
+		return (value + (1024*1024 - 1)) / (1024 * 1024)
+	}
+
+	return 0
+}
+
+func mapLimaNodeStatus(node k8s.NodeInfo) string {
+	ready := strings.EqualFold(node.Status, "Ready")
+	hasPressure := false
+
+	for _, condition := range node.Conditions {
+		if condition.Type == "Ready" {
+			ready = strings.EqualFold(condition.Status, "True")
+		}
+
+		if (condition.Type == "DiskPressure" || condition.Type == "MemoryPressure" || condition.Type == "PIDPressure") && strings.EqualFold(condition.Status, "True") {
+			hasPressure = true
+		}
+	}
+
+	if hasPressure {
+		return "broken"
+	}
+	if ready {
+		return "running"
+	}
+	return "stopped"
+}
+
+// GetLimaStatus returns Lima VM status across deduplicated clusters.
+func (h *MCPHandlers) GetLimaStatus(c *fiber.Ctx) error {
+	if h.k8sClient == nil {
+		return c.Status(503).JSON(fiber.Map{"error": "No cluster access available"})
+	}
+
+	ctx, cancel := context.WithTimeout(c.Context(), mcpDefaultTimeout)
+	defer cancel()
+
+	clusters, err := h.k8sClient.DeduplicatedClusters(ctx)
+	if err != nil {
+		log.Printf("internal error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+	}
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	instances := make([]limaInstanceStatus, 0)
+	clusterTimeout := mcpDefaultTimeout
+
+	for _, cluster := range clusters {
+		wg.Add(1)
+		go func(clusterName string) {
+			defer wg.Done()
+
+			clusterCtx, clusterCancel := context.WithTimeout(c.Context(), clusterTimeout)
+			defer clusterCancel()
+
+			nodes, getErr := h.k8sClient.GetNodes(clusterCtx, clusterName)
+			if getErr != nil || len(nodes) == 0 {
+				return
+			}
+
+			local := make([]limaInstanceStatus, 0)
+			now := time.Now().Format(time.RFC3339)
+			for _, node := range nodes {
+				if !isLimaNode(node) {
+					continue
+				}
+
+				arch := node.Architecture
+				if arch == "" {
+					arch = "unknown"
+				}
+
+				osImage := node.OSImage
+				if osImage == "" {
+					osImage = "Linux"
+				}
+
+				limaVersion := "unknown"
+				if node.Labels != nil {
+					if version, ok := node.Labels["lima.sh/version"]; ok && version != "" {
+						limaVersion = version
+					}
+				}
+
+				local = append(local, limaInstanceStatus{
+					Name:        node.Name,
+					Cluster:     clusterName,
+					Status:      mapLimaNodeStatus(node),
+					CpuCores:    parseLimaCPUCores(node.CPUCapacity),
+					MemoryGB:    parseLimaMemoryGB(node.MemoryCapacity),
+					DiskGB:      0,
+					Arch:        arch,
+					OS:          osImage,
+					LimaVersion: limaVersion,
+					LastSeen:    now,
+				})
+			}
+
+			if len(local) > 0 {
+				mu.Lock()
+				instances = append(instances, local...)
+				mu.Unlock()
+			}
+		}(cluster.Name)
+	}
+
+	waitWithDeadline(&wg, maxResponseDeadline)
+
+	runningNodes := 0
+	stoppedNodes := 0
+	brokenNodes := 0
+	totalCpuCores := 0
+	totalMemoryGB := 0
+
+	for _, instance := range instances {
+		switch instance.Status {
+		case "running":
+			runningNodes++
+		case "broken":
+			brokenNodes++
+		default:
+			stoppedNodes++
+		}
+		totalCpuCores += instance.CpuCores
+		totalMemoryGB += instance.MemoryGB
+	}
+
+	detected := len(instances) > 0
+	health := "not-detected"
+	if detected {
+		health = "healthy"
+		if brokenNodes > 0 || stoppedNodes > 0 {
+			health = "degraded"
+		}
+	}
+
+	return c.JSON(limaStatusResponse{
+		Detected:      detected,
+		Instances:     instances,
+		TotalNodes:    len(instances),
+		RunningNodes:  runningNodes,
+		StoppedNodes:  stoppedNodes,
+		BrokenNodes:   brokenNodes,
+		Health:        health,
+		TotalCpuCores: totalCpuCores,
+		TotalMemoryGB: totalMemoryGB,
+		LastCheckTime: time.Now().Format(time.RFC3339),
+		Source:        "k8s",
+	})
+}
+
 // FindDeploymentIssues returns deployments with issues
 func (h *MCPHandlers) FindDeploymentIssues(c *fiber.Ctx) error {
 	// Demo mode: return demo data immediately
@@ -729,7 +974,7 @@ func (h *MCPHandlers) FindDeploymentIssues(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -789,7 +1034,7 @@ func (h *MCPHandlers) GetDeployments(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -848,7 +1093,7 @@ func (h *MCPHandlers) GetServices(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -908,7 +1153,7 @@ func (h *MCPHandlers) GetJobs(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -968,7 +1213,7 @@ func (h *MCPHandlers) GetHPAs(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -1028,7 +1273,7 @@ func (h *MCPHandlers) GetConfigMaps(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -1088,7 +1333,7 @@ func (h *MCPHandlers) GetSecrets(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -1148,7 +1393,7 @@ func (h *MCPHandlers) GetServiceAccounts(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -1208,7 +1453,7 @@ func (h *MCPHandlers) GetPVCs(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -1267,7 +1512,7 @@ func (h *MCPHandlers) GetPVs(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -1327,7 +1572,7 @@ func (h *MCPHandlers) GetResourceQuotas(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -1387,7 +1632,7 @@ func (h *MCPHandlers) GetLimitRanges(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -1435,13 +1680,13 @@ func (h *MCPHandlers) GetLimitRanges(c *fiber.Ctx) error {
 // CreateOrUpdateResourceQuota creates or updates a ResourceQuota
 func (h *MCPHandlers) CreateOrUpdateResourceQuota(c *fiber.Ctx) error {
 	var req struct {
-		Cluster          string            `json:"cluster"`
-		Name             string            `json:"name"`
-		Namespace        string            `json:"namespace"`
-		Hard             map[string]string `json:"hard"`
-		Labels           map[string]string `json:"labels,omitempty"`
-		Annotations      map[string]string `json:"annotations,omitempty"`
-		EnsureNamespace  bool              `json:"ensure_namespace,omitempty"`
+		Cluster         string            `json:"cluster"`
+		Name            string            `json:"name"`
+		Namespace       string            `json:"namespace"`
+		Hard            map[string]string `json:"hard"`
+		Labels          map[string]string `json:"labels,omitempty"`
+		Annotations     map[string]string `json:"annotations,omitempty"`
+		EnsureNamespace bool              `json:"ensure_namespace,omitempty"`
 	}
 
 	if err := c.BodyParser(&req); err != nil {
@@ -1464,7 +1709,7 @@ func (h *MCPHandlers) CreateOrUpdateResourceQuota(c *fiber.Ctx) error {
 		if req.EnsureNamespace {
 			if err := h.k8sClient.EnsureNamespaceExists(ctx, req.Cluster, req.Namespace); err != nil {
 				log.Printf("failed to create namespace: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 		}
 
@@ -1578,7 +1823,7 @@ func (h *MCPHandlers) GetEvents(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			perClusterLimit := limit / len(clusters)
@@ -1664,7 +1909,7 @@ func (h *MCPHandlers) GetWarningEvents(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			perClusterLimit := limit / len(clusters)
@@ -1736,7 +1981,7 @@ func (h *MCPHandlers) CheckSecurityIssues(c *fiber.Ctx) error {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
 				log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
@@ -1797,14 +2042,14 @@ var AllowedOpsTools = map[string]bool{
 	"audit_kubeconfig":    true,
 
 	// Read-only queries
-	"get_pods":            true,
-	"get_deployments":     true,
-	"get_services":        true,
-	"get_nodes":           true,
-	"get_events":          true,
-	"get_warning_events":  true,
-	"describe_pod":        true,
-	"get_pod_logs":        true,
+	"get_pods":           true,
+	"get_deployments":    true,
+	"get_services":       true,
+	"get_nodes":          true,
+	"get_events":         true,
+	"get_warning_events": true,
+	"describe_pod":       true,
+	"get_pod_logs":       true,
 
 	// Issue detection (read-only analysis)
 	"find_pod_issues":        true,
@@ -1813,39 +2058,39 @@ var AllowedOpsTools = map[string]bool{
 	"check_security_issues":  true,
 
 	// RBAC queries (read-only)
-	"get_roles":                    true,
-	"get_cluster_roles":            true,
-	"get_role_bindings":            true,
-	"get_cluster_role_bindings":    true,
-	"can_i":                        true,
-	"analyze_subject_permissions":  true,
-	"describe_role":                true,
+	"get_roles":                   true,
+	"get_cluster_roles":           true,
+	"get_role_bindings":           true,
+	"get_cluster_role_bindings":   true,
+	"can_i":                       true,
+	"analyze_subject_permissions": true,
+	"describe_role":               true,
 
 	// Upgrade checking (read-only)
-	"get_cluster_version_info":     true,
-	"check_olm_operator_upgrades":  true,
-	"check_helm_release_upgrades":  true,
-	"get_upgrade_prerequisites":    true,
-	"get_upgrade_status":           true,
+	"get_cluster_version_info":    true,
+	"check_olm_operator_upgrades": true,
+	"check_helm_release_upgrades": true,
+	"get_upgrade_prerequisites":   true,
+	"get_upgrade_status":          true,
 
 	// Ownership analysis (read-only)
-	"find_resource_owners":         true,
-	"check_gatekeeper":             true,
-	"get_ownership_policy_status":  true,
-	"list_ownership_violations":    true,
+	"find_resource_owners":        true,
+	"check_gatekeeper":            true,
+	"get_ownership_policy_status": true,
+	"list_ownership_violations":   true,
 }
 
 // AllowedDeployTools is the whitelist of kubestellar-deploy tools that can be called via API
 // SECURITY: Write operations require explicit allowlisting
 var AllowedDeployTools = map[string]bool{
 	// Read-only operations
-	"get_app_instances":        true,
-	"get_app_status":           true,
-	"get_app_logs":             true,
-	"list_cluster_capabilities": true,
+	"get_app_instances":          true,
+	"get_app_status":             true,
+	"get_app_logs":               true,
+	"list_cluster_capabilities":  true,
 	"find_clusters_for_workload": true,
-	"detect_drift":             true,
-	"preview_changes":          true,
+	"detect_drift":               true,
+	"preview_changes":            true,
 
 	// Write operations - disabled by default for security
 	// Enable these only after proper authorization checks
@@ -1918,7 +2163,7 @@ func (h *MCPHandlers) CallOpsTool(c *fiber.Ctx) error {
 	result, err := h.bridge.CallOpsTool(ctx, req.Name, req.Arguments)
 	if err != nil {
 		log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+		return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 	}
 
 	return c.JSON(result)
@@ -1946,7 +2191,7 @@ func (h *MCPHandlers) CallDeployTool(c *fiber.Ctx) error {
 	result, err := h.bridge.CallDeployTool(ctx, req.Name, req.Arguments)
 	if err != nil {
 		log.Printf("internal error: %v", err)
-			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+		return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 	}
 
 	return c.JSON(result)

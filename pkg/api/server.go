@@ -44,19 +44,19 @@ var Version = "dev"
 
 // Config holds server configuration
 type Config struct {
-	Port             int
-	DevMode          bool
-	SkipOnboarding   bool
-	DatabasePath     string
-	GitHubClientID   string
-	GitHubSecret     string
-	GitHubURL        string // GitHub base URL (e.g., "https://github.ibm.com"), defaults to "https://github.com"
-	JWTSecret        string
-	FrontendURL      string
-	ClaudeAPIKey     string
+	Port                  int
+	DevMode               bool
+	SkipOnboarding        bool
+	DatabasePath          string
+	GitHubClientID        string
+	GitHubSecret          string
+	GitHubURL             string // GitHub base URL (e.g., "https://github.ibm.com"), defaults to "https://github.com"
+	JWTSecret             string
+	FrontendURL           string
+	ClaudeAPIKey          string
 	KubestellarOpsPath    string
 	KubestellarDeployPath string
-	Kubeconfig       string
+	Kubeconfig            string
 	// Dev mode user settings (used when GitHub OAuth not configured)
 	DevUserLogin  string
 	DevUserEmail  string
@@ -64,10 +64,10 @@ type Config struct {
 	// GitHub personal access token for dev mode profile lookup
 	GitHubToken string
 	// Feature request/feedback configuration
-	FeedbackGitHubToken  string // PAT for creating issues
-	GitHubWebhookSecret  string // Secret for validating GitHub webhooks
-	FeedbackRepoOwner    string // GitHub org/owner (e.g., "kubestellar")
-	FeedbackRepoName     string // GitHub repo name (e.g., "console")
+	FeedbackGitHubToken string // PAT for creating issues
+	GitHubWebhookSecret string // Secret for validating GitHub webhooks
+	FeedbackRepoOwner   string // GitHub org/owner (e.g., "kubestellar")
+	FeedbackRepoName    string // GitHub repo name (e.g., "console")
 	// GitHub activity rewards
 	RewardsGitHubOrgs string // Org filter for GitHub search (e.g., "org:kubestellar org:llm-d")
 	// Benchmark data configuration (Google Drive)
@@ -156,8 +156,8 @@ func NewServer(cfg Config) (*Server, error) {
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
-		ErrorHandler:   customErrorHandler,
-		ReadBufferSize: 16384,
+		ErrorHandler:    customErrorHandler,
+		ReadBufferSize:  16384,
 		WriteBufferSize: 16384,
 		ReadTimeout:     30 * time.Second,
 		WriteTimeout:    5 * time.Minute, // large static assets on slow networks
@@ -386,18 +386,18 @@ func (s *Server) setupRoutes() {
 			"self_upgrade":     os.Getenv("SELF_UPGRADE_ENABLED") == "true",
 			"project":          s.config.ConsoleProject,
 			"branding": fiber.Map{
-				"appName":           s.config.BrandAppName,
-				"appShortName":      s.config.BrandAppShortName,
-				"tagline":           s.config.BrandTagline,
-				"logoUrl":           s.config.BrandLogoURL,
-				"faviconUrl":        s.config.BrandFaviconURL,
-				"themeColor":        s.config.BrandThemeColor,
-				"docsUrl":           s.config.BrandDocsURL,
-				"communityUrl":      s.config.BrandCommunityURL,
-				"websiteUrl":        s.config.BrandWebsiteURL,
-				"issuesUrl":         s.config.BrandIssuesURL,
-				"repoUrl":           s.config.BrandRepoURL,
-				"hostedDomain":      s.config.BrandHostedDomain,
+				"appName":            s.config.BrandAppName,
+				"appShortName":       s.config.BrandAppShortName,
+				"tagline":            s.config.BrandTagline,
+				"logoUrl":            s.config.BrandLogoURL,
+				"faviconUrl":         s.config.BrandFaviconURL,
+				"themeColor":         s.config.BrandThemeColor,
+				"docsUrl":            s.config.BrandDocsURL,
+				"communityUrl":       s.config.BrandCommunityURL,
+				"websiteUrl":         s.config.BrandWebsiteURL,
+				"issuesUrl":          s.config.BrandIssuesURL,
+				"repoUrl":            s.config.BrandRepoURL,
+				"hostedDomain":       s.config.BrandHostedDomain,
 				"showStarDecoration": s.config.ConsoleProject == "kubestellar",
 				"showAdopterNudge":   s.config.ConsoleProject == "kubestellar",
 				"showDemoToLocalCTA": s.config.ConsoleProject == "kubestellar",
@@ -426,22 +426,22 @@ func (s *Server) setupRoutes() {
 
 	// Auth routes (public)
 	auth := handlers.NewAuthHandler(s.store, handlers.AuthConfig{
-		GitHubClientID:   s.config.GitHubClientID,
-		GitHubSecret:     s.config.GitHubSecret,
-		GitHubURL:        s.config.GitHubURL,
-		JWTSecret:        s.config.JWTSecret,
-		FrontendURL:      s.config.FrontendURL,
-		BackendURL:       s.backendURL(),
-		DevUserLogin:     s.config.DevUserLogin,
-		DevUserEmail:     s.config.DevUserEmail,
-		DevUserAvatar:    s.config.DevUserAvatar,
-		GitHubToken:      s.config.GitHubToken,
-		DevMode:          s.config.DevMode,
-		SkipOnboarding:   s.config.SkipOnboarding,
+		GitHubClientID: s.config.GitHubClientID,
+		GitHubSecret:   s.config.GitHubSecret,
+		GitHubURL:      s.config.GitHubURL,
+		JWTSecret:      s.config.JWTSecret,
+		FrontendURL:    s.config.FrontendURL,
+		BackendURL:     s.backendURL(),
+		DevUserLogin:   s.config.DevUserLogin,
+		DevUserEmail:   s.config.DevUserEmail,
+		DevUserAvatar:  s.config.DevUserAvatar,
+		GitHubToken:    s.config.GitHubToken,
+		DevMode:        s.config.DevMode,
+		SkipOnboarding: s.config.SkipOnboarding,
 	})
 	// Rate limit auth endpoints — stricter to prevent brute-force
-	authLimiterMaxRequests := 10            // max requests per window
-	authLimiterWindow := 1 * time.Minute    // sliding window duration
+	authLimiterMaxRequests := 10         // max requests per window
+	authLimiterWindow := 1 * time.Minute // sliding window duration
 	authLimiter := limiter.New(limiter.Config{
 		Max:        authLimiterMaxRequests,
 		Expiration: authLimiterWindow,
@@ -519,8 +519,8 @@ func (s *Server) setupRoutes() {
 	missions.RegisterPublicRoutes(s.app.Group("/api/missions"))
 
 	// API routes (protected) — with rate limiting
-	apiLimiterMaxRequests := 200            // max requests per window per IP
-	apiLimiterWindow := 1 * time.Minute     // sliding window duration
+	apiLimiterMaxRequests := 200        // max requests per window per IP
+	apiLimiterWindow := 1 * time.Minute // sliding window duration
 	apiLimiter := limiter.New(limiter.Config{
 		Max:        apiLimiterMaxRequests,
 		Expiration: apiLimiterWindow,
@@ -640,6 +640,7 @@ func (s *Server) setupRoutes() {
 	api.Delete("/mcp/gpu-nodes/health/cronjob", mcpHandlers.UninstallGPUHealthCronJob)
 	api.Get("/mcp/gpu-nodes/health/cronjob/results", mcpHandlers.GetGPUHealthCronJobResults)
 	api.Get("/mcp/nvidia-operators", mcpHandlers.GetNVIDIAOperatorStatus)
+	api.Get("/mcp/lima/status", mcpHandlers.GetLimaStatus)
 	api.Get("/mcp/nodes", mcpHandlers.GetNodes)
 	api.Get("/mcp/flatcar/nodes", mcpHandlers.GetFlatcarNodes)
 	api.Get("/mcp/events", mcpHandlers.GetEvents)
@@ -1064,18 +1065,18 @@ func LoadConfigFromEnv() Config {
 	jwtSecret := os.Getenv("JWT_SECRET")
 
 	return Config{
-		Port:             port,
-		DevMode:          devMode,
-		DatabasePath:     dbPath,
-		GitHubClientID:   os.Getenv("GITHUB_CLIENT_ID"),
-		GitHubSecret:     os.Getenv("GITHUB_CLIENT_SECRET"),
-		GitHubURL:        getEnvOrDefault("GITHUB_URL", "https://github.com"),
-		JWTSecret:        jwtSecret,
-		FrontendURL:      frontendURL,
-		ClaudeAPIKey:     os.Getenv("CLAUDE_API_KEY"),
+		Port:                  port,
+		DevMode:               devMode,
+		DatabasePath:          dbPath,
+		GitHubClientID:        os.Getenv("GITHUB_CLIENT_ID"),
+		GitHubSecret:          os.Getenv("GITHUB_CLIENT_SECRET"),
+		GitHubURL:             getEnvOrDefault("GITHUB_URL", "https://github.com"),
+		JWTSecret:             jwtSecret,
+		FrontendURL:           frontendURL,
+		ClaudeAPIKey:          os.Getenv("CLAUDE_API_KEY"),
 		KubestellarOpsPath:    getEnvOrDefault("KUBESTELLAR_OPS_PATH", "kubestellar-ops"),
 		KubestellarDeployPath: getEnvOrDefault("KUBESTELLAR_DEPLOY_PATH", "kubestellar-deploy"),
-		Kubeconfig:       os.Getenv("KUBECONFIG"),
+		Kubeconfig:            os.Getenv("KUBECONFIG"),
 		// Dev mode user settings
 		DevUserLogin:  getEnvOrDefault("DEV_USER_LOGIN", "dev-user"),
 		DevUserEmail:  getEnvOrDefault("DEV_USER_EMAIL", "dev@localhost"),
